@@ -11,6 +11,7 @@
 
 // template over the bundle of types and functions.
 // Overwrites ca!
+static int shareMemSize = 0;
 template <typename B>
 typename B::vector_Fr *compute_H(size_t d, typename B::vector_Fr *ca,
                                  typename B::vector_Fr *cb,
@@ -162,9 +163,9 @@ void run_prover(
     cudaStream_t sA, sB1, sB2, sL;
 
     //ec_reduce_straus<ECp, C, R>(sA, out_A.get(), A_mults.get(), w, m + 1);
-    ec_reduce_straus<ECp, C, R>(sB1, out_B1.get(), B1_mults.get(), w, m + 1);
-    ec_reduce_straus<ECpe, C, 2*R>(sB2, out_B2.get(), B2_mults.get(), w, m + 1);
-    ec_reduce_straus<ECp, C, R>(sL, out_L.get(), L_mults.get(), w + (primary_input_size + 1) * ELT_LIMBS, m - 1);
+    ec_reduce_straus<ECp, C, R>(shareMemSize, sB1, out_B1.get(), B1_mults.get(), w, m + 1);
+    ec_reduce_straus<ECpe, C, 2*R>(shareMemSize, sB2, out_B2.get(), B2_mults.get(), w, m + 1);
+    ec_reduce_straus<ECp, C, R>(shareMemSize, sL, out_L.get(), L_mults.get(), w + (primary_input_size + 1) * ELT_LIMBS, m - 1);
     print_time(t, "gpu launch");
 
     G1 *evaluation_At = B::multiexp_G1(B::input_w(inputs), B::params_A(params), m + 1);
@@ -236,6 +237,24 @@ int main(int argc, char **argv) {
 
   const char *params_path = argv[3];
 
+  int deviceCount = 0;
+  cudaError_t error_id = cudaGetDeviceCount(&deviceCount);
+  if (error_id != cudaSuccess) {
+    printf("cudaGetDeviceCount returned %d\n-> %s\n",
+           static_cast<int>(error_id), cudaGetErrorString(error_id));
+    printf("Result = FAIL\n");
+    exit(EXIT_FAILURE);
+  }
+  if (deviceCount == 0) {
+    printf("There are no available device(s) that support CUDA\n");
+  } else {
+    printf("Detected %d CUDA Capable device(s)\n", deviceCount);
+  }
+  cudaDeviceProp deviceProp;
+  cudaGetDeviceProperties(&deviceProp, 0);
+  shareMemSize = deviceProp.sharedMemPerBlock;
+  printf("  Total amount of shared memory per block:       %lu bytes\n",
+           shareMemSize);
   if (mode == "compute") {
       const char *input_path = argv[4];
       const char *output_path = argv[5];

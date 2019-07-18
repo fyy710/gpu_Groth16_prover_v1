@@ -10,11 +10,12 @@
 // R is the number of points we're handling per thread
 template< typename EC, int C = 4, int RR = 8 >
 __global__ void
-ec_multiexp_straus(var *out, const var *multiples_, const var *scalars_, size_t N)
+ec_multiexp_straus(int max_thread_use_sharemem, var *out, const var *multiples_, const var *scalars_, size_t N)
 {
     int T = threadIdx.x, B = blockIdx.x, D = blockDim.x;
     int elts_per_block = D / BIG_WIDTH;
     int tileIdx = T / BIG_WIDTH;
+    int TInBlock = (T%D);
 
     int idx = elts_per_block * B + tileIdx;
 
@@ -30,11 +31,33 @@ ec_multiexp_straus(var *out, const var *multiples_, const var *scalars_, size_t 
         int m_off = idx * RR * AFF_POINT_LIMBS;
         int s_off = idx * RR * ELT_LIMBS;
 
+#ifdef ENABLE_SHARE_MEM
+        Fr *scalars;
+        extern __shared__ var scalar_share[];
+        if (TInBlock < max_thread_use_sharemem) {
+            int share_off = tileIdx * RR * BIG_WIDTH;
+            scalars = (Fr *)(scalar_share + share_off + (T%BIG_WIDTH)*R);
+            for (int j = 0; j < R; ++j) {
+                Fr::load(scalars[j], scalars_ + s_off + j*ELT_LIMBS);
+                Fr::from_monty(scalars[j], scalars[j]);
+            }
+            __syncthreads();
+        }
+        else {
+            Fr scalarss[RR];
+            scalars = scalarss;
+            for (int j = 0; j < R; ++j) {
+                Fr::load(scalars[j], scalars_ + s_off + j*ELT_LIMBS);
+                Fr::from_monty(scalars[j], scalars[j]);
+            }
+        }
+#else
         Fr scalars[RR];
         for (int j = 0; j < R; ++j) {
             Fr::load(scalars[j], scalars_ + s_off + j*ELT_LIMBS);
             Fr::from_monty(scalars[j], scalars[j]);
         }
+#endif
 
         const var *multiples = multiples_ + m_off;
         // TODO: Consider loading multiples and/or scalars into shared memory
@@ -130,7 +153,7 @@ static constexpr size_t threads_per_block = 256;
 
 template< typename EC, int C, int R >
 void
-ec_reduce_straus(cudaStream_t &strm, var *out, const var *multiples, const var *scalars, size_t N)
+ec_reduce_straus(int SMSize, cudaStream_t &strm, var *out, const var *multiples, const var *scalars, size_t N)
 {
     cudaStreamCreate(&strm);
 
@@ -138,8 +161,9 @@ ec_reduce_straus(cudaStream_t &strm, var *out, const var *multiples, const var *
     size_t n = (N + R - 1) / R;
 
     size_t nblocks = (n * BIG_WIDTH + threads_per_block - 1) / threads_per_block;
+    int max_thread_use_sharemem = SMSize/(R*sizeof(var));
 
-    ec_multiexp_straus<EC, C, R><<< nblocks, threads_per_block, 0, strm>>>(out, multiples, scalars, N);
+    ec_multiexp_straus<EC, C, R><<< nblocks, threads_per_block, SMSize, strm>>>(max_thread_use_sharemem, out, multiples, scalars, N);
 
     size_t r = n & 1, m = n / 2;
     for ( ; m != 0; r = m & 1, m >>= 1) {

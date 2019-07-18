@@ -153,7 +153,7 @@ static constexpr size_t threads_per_block = 256;
 
 template< typename EC, int C, int R >
 void
-ec_reduce_straus(int SMSize, cudaStream_t &strm, var *out, const var *multiples, const var *scalars, size_t N)
+ec_reduce_straus(int share_mem_size, int thread_in_block, cudaStream_t &strm, var *out, const var *multiples, const var *scalars, size_t N)
 {
     cudaStreamCreate(&strm);
 
@@ -161,9 +161,9 @@ ec_reduce_straus(int SMSize, cudaStream_t &strm, var *out, const var *multiples,
     size_t n = (N + R - 1) / R;
 
     size_t nblocks = (n * BIG_WIDTH + threads_per_block - 1) / threads_per_block;
-    int max_thread_use_sharemem = SMSize/(R*sizeof(var));
+    int max_thread_use_sharemem = share_mem_size/(R*sizeof(var));
 
-    ec_multiexp_straus<EC, C, R><<< nblocks, threads_per_block, SMSize, strm>>>(max_thread_use_sharemem, out, multiples, scalars, N);
+    ec_multiexp_straus<EC, C, R><<< nblocks, thread_in_block, share_mem_size, strm>>>(max_thread_use_sharemem, out, multiples, scalars, N);
 
     size_t r = n & 1, m = n / 2;
     for ( ; m != 0; r = m & 1, m >>= 1) {

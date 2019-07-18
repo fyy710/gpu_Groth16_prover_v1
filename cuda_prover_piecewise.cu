@@ -11,7 +11,8 @@
 
 // template over the bundle of types and functions.
 // Overwrites ca!
-static int shareMemSize = 0;
+static int share_mem_size = 0;
+static int thread_in_block = 0;
 template <typename B>
 typename B::vector_Fr *compute_H(size_t d, typename B::vector_Fr *ca,
                                  typename B::vector_Fr *cb,
@@ -163,9 +164,9 @@ void run_prover(
     cudaStream_t sA, sB1, sB2, sL;
 
     //ec_reduce_straus<ECp, C, R>(sA, out_A.get(), A_mults.get(), w, m + 1);
-    ec_reduce_straus<ECp, C, R>(shareMemSize, sB1, out_B1.get(), B1_mults.get(), w, m + 1);
-    ec_reduce_straus<ECpe, C, 2*R>(shareMemSize, sB2, out_B2.get(), B2_mults.get(), w, m + 1);
-    ec_reduce_straus<ECp, C, R>(shareMemSize, sL, out_L.get(), L_mults.get(), w + (primary_input_size + 1) * ELT_LIMBS, m - 1);
+    ec_reduce_straus<ECp, C, R>(share_mem_size, thread_in_block, sB1, out_B1.get(), B1_mults.get(), w, m + 1);
+    ec_reduce_straus<ECpe, C, 2*R>(share_mem_size, thread_in_block/2, sB2, out_B2.get(), B2_mults.get(), w, m + 1);
+    ec_reduce_straus<ECp, C, R>(share_mem_size, thread_in_block, sL, out_L.get(), L_mults.get(), w + (primary_input_size + 1) * ELT_LIMBS, m - 1);
     print_time(t, "gpu launch");
 
     G1 *evaluation_At = B::multiexp_G1(B::input_w(inputs), B::params_A(params), m + 1);
@@ -252,9 +253,15 @@ int main(int argc, char **argv) {
   }
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, 0);
-  shareMemSize = deviceProp.sharedMemPerBlock;
+  share_mem_size = deviceProp.sharedMemPerBlock;
+  thread_in_block = deviceProp.maxThreadsPerBlock;
+  printf("\nDevice: \"%s\"\n", deviceProp.name);
   printf("  Total amount of shared memory per block:       %lu bytes\n",
-           shareMemSize);
+           share_mem_size);
+  printf("  Total number of registers available per block: %d\n",
+           deviceProp.regsPerBlock);
+  printf("  Maximum number of threads per block:           %d\n",
+           thread_in_block);
   if (mode == "compute") {
       const char *input_path = argv[4];
       const char *output_path = argv[5];

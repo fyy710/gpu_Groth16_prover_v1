@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.10)
 enable_language(CUDA)
 
 project (libsnark)
+add_definitions(-DENABLE_SHARE_MEM)
 
 set(
   CURVE

@@ -115,6 +115,9 @@ void run_prover(
     rewind(params_file);
 
     printf("d = %zu, m = %zu\n", d, m);
+#ifdef ENABLE_SHARE_MEM
+    printf("Enable SHARE MEM\n");
+#endif
 
     typedef typename ec_type<B>::ECp ECp;
     typedef typename ec_type<B>::ECpe ECpe;

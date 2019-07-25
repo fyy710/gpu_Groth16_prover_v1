@@ -41,7 +41,6 @@ ec_multiexp_straus(int max_thread_use_sharemem, var *out, const var *multiples_,
                 Fr::load(scalars[j], scalars_ + s_off + j*ELT_LIMBS);
                 Fr::from_monty(scalars[j], scalars[j]);
             }
-            __syncthreads();
         }
         else {
             Fr scalarss[RR];
